@@ -28,7 +28,8 @@ const canTrain = computed(() => {
 })
 
 const hasTraining = computed(() => {
-  return props.bird.trainingProgress && props.bird.trainingProgress.length > 0
+  if (!props.bird.trainingProgress || props.bird.trainingProgress.length === 0) return false
+  return props.bird.trainingProgress.some(t => t.level > 0)
 })
 
 const totalTrainingLevel = computed(() => {

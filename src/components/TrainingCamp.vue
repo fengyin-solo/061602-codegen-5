@@ -79,10 +79,10 @@ const getCourseSuitability = (courseId: TrainingCourseType) => {
 
 const getExpProgress = (progress: { totalExp: number; level: number } | null) => {
   if (!progress) return { current: 0, needed: TRAINING_EXP_PER_LEVEL, percent: 0 }
-  const currentLevelExp = (progress.level - 1) * TRAINING_EXP_PER_LEVEL
+  const currentLevelExp = progress.level * TRAINING_EXP_PER_LEVEL
   const current = progress.totalExp - currentLevelExp
   const needed = TRAINING_EXP_PER_LEVEL
-  return { current, needed, percent: Math.min(100, (current / needed) * 100) }
+  return { current: Math.max(0, current), needed, percent: Math.min(100, (Math.max(0, current) / needed) * 100) }
 }
 
 const awayReduction = computed(() => {
@@ -129,7 +129,7 @@ const canTrain = (courseId: TrainingCourseType) => {
       <div class="text-center text-white/50">
         <div class="text-5xl mb-3">🐦</div>
         <div>请先选择一只小鸟</div>
-        <div class="text-sm mt-1">幼鸟及以上阶段可参加训练</div>
+        <div class="text-sm mt-1">幼鸟阶段起可参加训练（雏鸟太小）</div>
       </div>
     </div>
 

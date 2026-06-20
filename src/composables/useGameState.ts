@@ -412,7 +412,7 @@ const getBirdTrainingEndingBonus = (bird: Bird): number => {
 const canStartTraining = (birdId: string, courseId: TrainingCourseType): { canStart: boolean; reason?: string } => {
   const bird = state.birds.find(b => b.id === birdId)
   if (!bird || bird.isDead || bird.isAway || bird.stage === 'egg' || bird.stage === 'chick') {
-    return { canStart: false, reason: '只有幼鸟及以上阶段才能训练' }
+    return { canStart: false, reason: '雏鸟还太小，幼鸟阶段起可参加训练' }
   }
   if (bird.activeTraining?.isActive) {
     return { canStart: false, reason: '正在进行其他训练' }
@@ -482,7 +482,7 @@ const completeTraining = (bird: Bird) => {
   }
 
   progress.totalExp += expGained
-  const newLevel = Math.min(TRAINING_MAX_LEVEL, Math.floor(progress.totalExp / TRAINING_EXP_PER_LEVEL) + 1)
+  const newLevel = Math.min(TRAINING_MAX_LEVEL, Math.floor(progress.totalExp / TRAINING_EXP_PER_LEVEL))
   const leveledUp = newLevel > progress.level
   progress.level = newLevel
 
