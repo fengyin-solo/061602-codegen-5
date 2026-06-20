@@ -16,10 +16,24 @@ const emit = defineEmits<{
   (e: 'feed', amount: number): void
   (e: 'calm'): void
   (e: 'bury'): void
+  (e: 'openTraining'): void
 }>()
 
 const canInteract = computed(() => {
   return !props.bird.isDead && !props.bird.isAway && props.bird.stage !== 'egg'
+})
+
+const canTrain = computed(() => {
+  return canInteract.value && props.bird.stage !== 'chick' && !props.bird.isSick
+})
+
+const hasTraining = computed(() => {
+  return props.bird.trainingProgress && props.bird.trainingProgress.length > 0
+})
+
+const totalTrainingLevel = computed(() => {
+  if (!props.bird.trainingProgress) return 0
+  return props.bird.trainingProgress.reduce((sum, t) => sum + t.level, 0)
 })
 
 const feedAmounts = [5, 10, 20]
@@ -115,10 +129,10 @@ const hatchProgress = computed(() => {
             <button
               v-for="amt in feedAmounts"
               :key="amt"
-              :disabled="foodStock < amt || !canInteract"
+              :disabled="foodStock < amt || !canInteract || bird.activeTraining?.isActive"
               :class="[
                 'px-2.5 py-1 rounded-lg text-xs font-bold transition-all',
-                foodStock >= amt && canInteract
+                foodStock >= amt && canInteract && !bird.activeTraining?.isActive
                   ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:from-green-400 hover:to-emerald-400 active:scale-95'
                   : 'bg-gray-600/50 text-gray-400 cursor-not-allowed',
               ]"
@@ -128,13 +142,43 @@ const hatchProgress = computed(() => {
             </button>
           </div>
           <button
-            v-if="bird.fear > 20"
+            v-if="bird.fear > 20 && !bird.activeTraining?.isActive"
             class="px-3 py-1 rounded-lg text-xs font-medium bg-gradient-to-r from-purple-500 to-violet-500 text-white
                    hover:from-purple-400 hover:to-violet-400 active:scale-95 transition-all"
             @click="emit('calm')"
           >
             🤗 安抚
           </button>
+          <button
+            v-if="canTrain && !bird.activeTraining?.isActive"
+            class="px-3 py-1 rounded-lg text-xs font-medium bg-gradient-to-r from-blue-500 to-cyan-500 text-white
+                   hover:from-blue-400 hover:to-cyan-400 active:scale-95 transition-all flex items-center gap-1"
+            @click="emit('openTraining')"
+          >
+            <span>🎓</span>
+            <span>训练</span>
+            <span v-if="hasTraining" class="bg-white/20 px-1.5 rounded-full text-[10px]">
+              Lv.{{ totalTrainingLevel }}
+            </span>
+          </button>
+        </div>
+
+        <div v-if="bird.activeTraining?.isActive && !bird.isDead" class="mt-2 bg-blue-500/20 rounded-lg p-2 text-xs" @click.stop>
+          <div class="flex items-center justify-between text-blue-300 mb-1">
+            <span class="flex items-center gap-1">
+              <span class="animate-pulse">🎓</span>
+              训练中...
+            </span>
+            <button
+              class="text-blue-300 hover:text-blue-200 underline"
+              @click="emit('openTraining')"
+            >
+              查看
+            </button>
+          </div>
+          <div class="h-1.5 bg-black/30 rounded-full overflow-hidden">
+            <div class="h-full bg-gradient-to-r from-blue-400 to-cyan-400 animate-progress" />
+          </div>
         </div>
 
         <div v-if="bird.isAway && !bird.isDead" class="text-center text-blue-300 text-xs py-2">

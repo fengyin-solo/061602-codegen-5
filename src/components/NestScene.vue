@@ -115,6 +115,7 @@ const displayBirds = computed(() => {
             :just-hatched="bird.justHatched"
             :just-grew="bird.justGrew"
             :just-fed="bird.justFed"
+            :just-trained="bird.justTrained"
             :personality="bird.personality"
           />
           <div

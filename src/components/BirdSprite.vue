@@ -11,6 +11,7 @@ const props = defineProps<{
   justHatched?: boolean
   justGrew?: boolean
   justFed?: boolean
+  justTrained?: boolean
   personality?: Personality
 }>()
 
@@ -18,6 +19,7 @@ const stageClass = computed(() => {
   if (props.isDead) return 'grayscale opacity-60'
   if (props.justHatched) return 'animate-hatch'
   if (props.justFed) return 'animate-happy'
+  if (props.justTrained) return 'animate-happy'
   if (props.stage === 'egg') return 'animate-wiggle'
   if (props.isAway) return 'opacity-30 translate-x-full transition-all duration-500'
   return 'animate-breath'

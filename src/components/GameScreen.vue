@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch, onMounted } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGameState } from '@/composables/useGameState'
 import StatusBar from './StatusBar.vue'
@@ -7,6 +7,7 @@ import NestScene from './NestScene.vue'
 import WeatherOverlay from './WeatherOverlay.vue'
 import BirdCard from './BirdCard.vue'
 import EventModal from './EventModal.vue'
+import TrainingCamp from './TrainingCamp.vue'
 import { WEATHER_COLORS } from '@/utils/constants'
 
 const router = useRouter()
@@ -15,6 +16,18 @@ const {
   collectBerry, feedBird, calmBird, buryBird,
   releaseBirds, keepAndBreed, returnToStart, tryLoadGame,
 } = useGameState()
+
+type RightPanelTab = 'events' | 'training'
+const rightPanelTab = ref<RightPanelTab>('events')
+
+const selectedBird = computed(() => {
+  if (!state.selectedBirdId) return null
+  return state.birds.find(b => b.id === state.selectedBirdId) ?? null
+})
+
+const handleOpenTraining = () => {
+  rightPanelTab.value = 'training'
+}
 
 onMounted(() => {
   if (state.phase === 'start') {
@@ -73,6 +86,7 @@ const handleCollect = (id: string) => {
               @feed="((amt: number) => feedBird(bird.id, amt))"
               @calm="calmBird(bird.id)"
               @bury="buryBird(bird.id)"
+              @open-training="handleOpenTraining"
             />
           </div>
         </div>
@@ -92,13 +106,46 @@ const handleCollect = (id: string) => {
           </div>
         </div>
 
-        <div class="lg:col-span-3 order-3 min-h-0 flex flex-col rounded-2xl bg-black/20 border border-white/10">
-          <EventModal
-            :state="state"
-            :all-adults="allAdults"
-            @release="releaseBirds"
-            @breed="keepAndBreed"
-          />
+        <div class="lg:col-span-3 order-3 min-h-0 flex flex-col rounded-2xl bg-black/20 border border-white/10 overflow-hidden">
+          <div class="flex border-b border-white/10">
+            <button
+              :class="[
+                'flex-1 py-3 text-sm font-medium transition-all',
+                rightPanelTab === 'events'
+                  ? 'text-amber-300 bg-white/10 border-b-2 border-amber-300'
+                  : 'text-white/60 hover:text-white hover:bg-white/5',
+              ]"
+              @click="rightPanelTab = 'events'"
+            >
+              📜 事件日志
+            </button>
+            <button
+              :class="[
+                'flex-1 py-3 text-sm font-medium transition-all',
+                rightPanelTab === 'training'
+                  ? 'text-amber-300 bg-white/10 border-b-2 border-amber-300'
+                  : 'text-white/60 hover:text-white hover:bg-white/5',
+              ]"
+              @click="rightPanelTab = 'training'"
+            >
+              🎓 训练营
+            </button>
+          </div>
+          <div class="flex-1 min-h-0 overflow-hidden">
+            <EventModal
+              v-show="rightPanelTab === 'events'"
+              :state="state"
+              :all-adults="allAdults"
+              @release="releaseBirds"
+              @breed="keepAndBreed"
+            />
+            <div v-show="rightPanelTab === 'training'" class="h-full p-3 overflow-y-auto scrollbar-hide">
+              <TrainingCamp
+                :bird="selectedBird"
+                @close="rightPanelTab = 'events'"
+              />
+            </div>
+          </div>
         </div>
       </div>
 

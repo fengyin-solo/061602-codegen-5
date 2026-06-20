@@ -1,5 +1,5 @@
 import { reactive, computed, watch } from 'vue'
-import type { GameState, Bird, Berry, GrowthStage, Personality, BerryType, Weather, GameScore } from '@/types/game'
+import type { GameState, Bird, Berry, GrowthStage, Personality, BerryType, Weather, GameScore, TrainingCourseType, TrainingResult, TrainingProgress } from '@/types/game'
 import {
   ATTR_MIN, ATTR_MAX, DEATH_THRESHOLD,
   STAGE_DURATION, FOOD_NEED_MULTIPLIER,
@@ -8,6 +8,8 @@ import {
   BERRY_VALUES, WEATHER_CHANGE_INTERVAL, WEATHER_EFFECTS,
   DAY_DURATION, INITIAL_FOOD, MIN_EGGS, MAX_EGGS,
   MAX_BREEDING_ROUNDS, BIRD_NAMES,
+  TRAINING_COURSES, TRAINING_EXP_PER_LEVEL, TRAINING_MAX_LEVEL,
+  PERSONALITY_TRAINING_MULTIPLIER,
 } from '@/utils/constants'
 import { randomInt, randomFloat, clamp, randomChoice, generateId, chance } from '@/utils/random'
 import { saveGame, loadGame, clearSave } from '@/utils/storage'
@@ -76,6 +78,7 @@ const createEgg = (index: number): Bird => {
     isDead: false,
     feedingCount: 0,
     lastFedAt: 0,
+    trainingProgress: [],
   }
 }
 
@@ -167,6 +170,12 @@ const updateBird = (bird: Bird, deltaMs: number, weatherEffect: ReturnType<typeo
     addEventLog(`💚 ${bird.name} 康复了！`, 'success')
   }
 
+  if (bird.activeTraining && bird.activeTraining.isActive) {
+    if (Date.now() >= bird.activeTraining.endTime) {
+      completeTraining(bird)
+    }
+  }
+
   if (bird.stage === 'egg') {
     bird.hatchTimeLeft -= deltaMs
     if (bird.hatchTimeLeft <= 0) {
@@ -192,15 +201,19 @@ const updateBird = (bird: Bird, deltaMs: number, weatherEffect: ReturnType<typeo
     bird.health = clamp(bird.health + HEALTH_RECOVERY_RATE * weatherEffect.healthMod * (deltaMs / 1000), ATTR_MIN, ATTR_MAX)
   }
 
+  const fearBonus = getBirdTrainingFearBonus(bird)
   if (weatherEffect.fearMod > 1) {
     bird.fear = clamp(bird.fear + (weatherEffect.fearMod - 1) * 2 * (deltaMs / 1000), ATTR_MIN, ATTR_MAX)
   } else {
-    bird.fear = clamp(bird.fear - FEAR_DECAY_RATE * weatherEffect.fearMod * (deltaMs / 1000), ATTR_MIN, ATTR_MAX)
+    const recoveryRate = (FEAR_DECAY_RATE + fearBonus) * weatherEffect.fearMod
+    bird.fear = clamp(bird.fear - recoveryRate * (deltaMs / 1000), ATTR_MIN, ATTR_MAX)
   }
 
-  if (weatherEffect.awayChance && !bird.isAway && bird.stage !== 'chick') {
+  if (weatherEffect.awayChance && !bird.isAway && bird.stage !== 'chick' && !bird.activeTraining?.isActive) {
     const personalityMod = bird.personality === 'bold' ? 0.3 : bird.personality === 'shy' ? 1.5 : 1
-    if (chance(weatherEffect.awayChance * personalityMod * (deltaMs / 10000))) {
+    const trainingReduction = getBirdTrainingAwayReduction(bird)
+    const finalChance = Math.max(0, weatherEffect.awayChance * personalityMod * (1 - trainingReduction))
+    if (chance(finalChance * (deltaMs / 10000))) {
       bird.isAway = true
       bird.awayUntil = Date.now() + randomInt(8000, 20000)
       addEventLog(`💨 ${bird.name} 被天气吓跑，暂时离巢了...`, 'warning')
@@ -359,6 +372,162 @@ const calmBird = (birdId: string): boolean => {
   return true
 }
 
+const getBirdTrainingProgress = (bird: Bird, courseId: TrainingCourseType): TrainingProgress | undefined => {
+  return bird.trainingProgress.find(t => t.courseId === courseId)
+}
+
+const getBirdTrainingAwayReduction = (bird: Bird): number => {
+  let totalReduction = 0
+  bird.trainingProgress.forEach(progress => {
+    const course = TRAINING_COURSES.find(c => c.id === progress.courseId)
+    if (course) {
+      totalReduction += course.awayChanceReduction * progress.level
+    }
+  })
+  return Math.min(totalReduction, 0.8)
+}
+
+const getBirdTrainingFearBonus = (bird: Bird): number => {
+  let totalBonus = 0
+  bird.trainingProgress.forEach(progress => {
+    const course = TRAINING_COURSES.find(c => c.id === progress.courseId)
+    if (course) {
+      totalBonus += course.fearRecoveryBonus * progress.level * 0.2
+    }
+  })
+  return totalBonus
+}
+
+const getBirdTrainingEndingBonus = (bird: Bird): number => {
+  let totalBonus = 0
+  bird.trainingProgress.forEach(progress => {
+    const course = TRAINING_COURSES.find(c => c.id === progress.courseId)
+    if (course) {
+      totalBonus += course.endingBonus * progress.level
+    }
+  })
+  return totalBonus
+}
+
+const canStartTraining = (birdId: string, courseId: TrainingCourseType): { canStart: boolean; reason?: string } => {
+  const bird = state.birds.find(b => b.id === birdId)
+  if (!bird || bird.isDead || bird.isAway || bird.stage === 'egg' || bird.stage === 'chick') {
+    return { canStart: false, reason: '只有幼鸟及以上阶段才能训练' }
+  }
+  if (bird.activeTraining?.isActive) {
+    return { canStart: false, reason: '正在进行其他训练' }
+  }
+  if (bird.isSick) {
+    return { canStart: false, reason: '生病中无法训练' }
+  }
+  const course = TRAINING_COURSES.find(c => c.id === courseId)
+  if (!course) {
+    return { canStart: false, reason: '课程不存在' }
+  }
+  if (state.foodStock < course.cost) {
+    return { canStart: false, reason: `食物不足，需要 ${course.cost} 🍒` }
+  }
+  const progress = getBirdTrainingProgress(bird, courseId)
+  if (progress && progress.level >= TRAINING_MAX_LEVEL) {
+    return { canStart: false, reason: '该课程已达到最高等级' }
+  }
+  return { canStart: true }
+}
+
+const startTraining = (birdId: string, courseId: TrainingCourseType): boolean => {
+  const check = canStartTraining(birdId, courseId)
+  if (!check.canStart) return false
+
+  const bird = state.birds.find(b => b.id === birdId)!
+  const course = TRAINING_COURSES.find(c => c.id === courseId)!
+
+  state.foodStock -= course.cost
+  bird.activeTraining = {
+    birdId,
+    courseId,
+    startTime: Date.now(),
+    endTime: Date.now() + course.duration,
+    isActive: true,
+  }
+
+  const multiplier = PERSONALITY_TRAINING_MULTIPLIER[bird.personality]?.[courseId] ?? 1
+  const suitableText = multiplier >= 1.2 ? '（非常适合！）' : multiplier <= 0.7 ? '（不太适合...）' : ''
+  addEventLog(`🎓 ${bird.name} 开始了${course.icon}${course.name}${suitableText}`, 'info')
+
+  return true
+}
+
+const completeTraining = (bird: Bird) => {
+  if (!bird.activeTraining) return
+
+  const session = bird.activeTraining
+  const course = TRAINING_COURSES.find(c => c.id === session.courseId)
+  if (!course) {
+    bird.activeTraining = undefined
+    return
+  }
+
+  const multiplier = PERSONALITY_TRAINING_MULTIPLIER[bird.personality]?.[course.id] ?? 1
+  const success = chance(Math.min(0.95, 0.6 + multiplier * 0.3))
+  const expGained = success ? Math.round(TRAINING_EXP_PER_LEVEL * multiplier) : Math.round(TRAINING_EXP_PER_LEVEL * 0.3 * multiplier)
+
+  let progress = bird.trainingProgress.find(t => t.courseId === course.id)
+  if (!progress) {
+    progress = {
+      courseId: course.id,
+      level: 0,
+      totalExp: 0,
+    }
+    bird.trainingProgress.push(progress)
+  }
+
+  progress.totalExp += expGained
+  const newLevel = Math.min(TRAINING_MAX_LEVEL, Math.floor(progress.totalExp / TRAINING_EXP_PER_LEVEL) + 1)
+  const leveledUp = newLevel > progress.level
+  progress.level = newLevel
+
+  const fearRecovered = success
+    ? Math.round(course.fearRecoveryBonus * multiplier * (1 + progress.level * 0.1))
+    : Math.round(course.fearRecoveryBonus * 0.3 * multiplier)
+
+  bird.fear = clamp(bird.fear - fearRecovered, ATTR_MIN, ATTR_MAX)
+  bird.justTrained = true
+
+  if (success) {
+    if (leveledUp) {
+      addEventLog(`🌟 ${bird.name} 完成了${course.icon}${course.name}，升到 Lv.${progress.level}！恐惧-${fearRecovered}`, 'success')
+    } else {
+      addEventLog(`✅ ${bird.name} 完成了${course.icon}${course.name}！恐惧-${fearRecovered}，经验+${expGained}`, 'success')
+    }
+  } else {
+    addEventLog(`😅 ${bird.name} 在${course.icon}${course.name}中发挥失常，恐惧-${fearRecovered}，经验+${expGained}`, 'warning')
+  }
+
+  bird.activeTraining = undefined
+
+  setTimeout(() => {
+    if (bird.justTrained) bird.justTrained = false
+  }, 2000)
+}
+
+const cancelTraining = (birdId: string): boolean => {
+  const bird = state.birds.find(b => b.id === birdId)
+  if (!bird || !bird.activeTraining?.isActive) return false
+
+  const course = TRAINING_COURSES.find(c => c.id === bird.activeTraining!.courseId)
+  const refund = course ? Math.floor(course.cost * 0.5) : 0
+  state.foodStock += refund
+
+  addEventLog(`⏹️ ${bird.name} 中断了训练，退还 ${refund} 🍒`, 'info')
+  bird.activeTraining = undefined
+  return true
+}
+
+const getTotalTrainingBonus = (): number => {
+  const aliveBirds = state.birds.filter(b => !b.isDead)
+  return aliveBirds.reduce((sum, bird) => sum + getBirdTrainingEndingBonus(bird), 0)
+}
+
 const allAdults = computed(() => {
   const alive = state.birds.filter(b => !b.isDead)
   return alive.length > 0 && alive.every(b => b.stage === 'adult')
@@ -421,12 +590,14 @@ const calculateScore = (): GameScore => {
   const personalityBonus = aliveBirds.length > 0
     ? aliveBirds.reduce((s, b) => s + (b.feedingCount > 10 ? 5 : 2), 0)
     : 0
+  const trainingBonus = getTotalTrainingBonus()
 
   const totalScore = Math.round(
     survivalRate * 40 +
     avgHealth * 0.3 +
     breedingBonus +
-    personalityBonus
+    personalityBonus +
+    trainingBonus
   )
 
   let stars = 1
@@ -447,6 +618,7 @@ const calculateScore = (): GameScore => {
     avgHealth: Math.round(avgHealth),
     breedingBonus,
     personalityBonus,
+    trainingBonus,
     stars,
     rank,
   }
@@ -506,5 +678,11 @@ export function useGameState() {
     tryLoadGame,
     allAdults,
     aliveCount,
+    startTraining,
+    cancelTraining,
+    canStartTraining,
+    getBirdTrainingProgress,
+    getBirdTrainingAwayReduction,
+    getBirdTrainingEndingBonus,
   }
 }

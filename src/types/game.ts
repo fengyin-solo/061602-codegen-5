@@ -8,6 +8,44 @@ export type BerryType = 'red' | 'blue' | 'golden'
 
 export type GamePhase = 'start' | 'playing' | 'breeding' | 'ended'
 
+export type TrainingCourseType = 'social' | 'courage' | 'patience' | 'explore' | 'agility'
+
+export interface TrainingCourse {
+  id: TrainingCourseType
+  name: string
+  icon: string
+  description: string
+  suitablePersonalities: Personality[]
+  unsuitablePersonalities: Personality[]
+  duration: number
+  cost: number
+  fearRecoveryBonus: number
+  awayChanceReduction: number
+  endingBonus: number
+}
+
+export interface TrainingProgress {
+  courseId: TrainingCourseType
+  level: number
+  totalExp: number
+  completedAt?: number
+}
+
+export interface TrainingSession {
+  birdId: string
+  courseId: TrainingCourseType
+  startTime: number
+  endTime: number
+  isActive: boolean
+}
+
+export interface TrainingResult {
+  courseId: TrainingCourseType
+  success: boolean
+  fearRecovered: number
+  message: string
+}
+
 export interface Bird {
   id: string
   name: string
@@ -24,11 +62,14 @@ export interface Bird {
   isDead: boolean
   feedingCount: number
   lastFedAt: number
+  trainingProgress: TrainingProgress[]
+  activeTraining?: TrainingSession
   awayUntil?: number
   sickUntil?: number
   justHatched?: boolean
   justGrew?: boolean
   justFed?: boolean
+  justTrained?: boolean
 }
 
 export interface Berry {
@@ -64,6 +105,7 @@ export interface GameScore {
   avgHealth: number
   breedingBonus: number
   personalityBonus: number
+  trainingBonus: number
   stars: number
   rank: string
 }

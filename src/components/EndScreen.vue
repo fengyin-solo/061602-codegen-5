@@ -67,7 +67,7 @@ const handleHome = () => {
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-4 mb-8">
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
           <div class="bg-white/5 rounded-2xl p-4 text-center border border-white/10">
             <div class="text-3xl mb-2">💚</div>
             <div class="text-white/60 text-xs mb-1">成活率</div>
@@ -90,6 +90,12 @@ const handleHome = () => {
             <div class="text-3xl mb-2">🌟</div>
             <div class="text-white/60 text-xs mb-1">照料加成</div>
             <div class="font-bold text-2xl text-amber-400">+{{ score.personalityBonus }}</div>
+          </div>
+
+          <div class="bg-white/5 rounded-2xl p-4 text-center border border-white/10">
+            <div class="text-3xl mb-2">🎓</div>
+            <div class="text-white/60 text-xs mb-1">训练加成</div>
+            <div class="font-bold text-2xl text-blue-400">+{{ score.trainingBonus }}</div>
           </div>
         </div>
 
